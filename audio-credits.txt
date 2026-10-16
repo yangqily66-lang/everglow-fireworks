@@ -1,0 +1,14 @@
+Fireworks field recordings — CC0 1.0
+Rudmer_Rotteveel: Sharp Explosion 2, 1, 4
+https://freesound.org/people/Rudmer_Rotteveel/sounds/336005/
+https://freesound.org/people/Rudmer_Rotteveel/sounds/336006/
+https://freesound.org/people/Rudmer_Rotteveel/sounds/336011/
+LukaCafuka: Firework Crackle
+https://freesound.org/people/LukaCafuka/sounds/750682/
+MP3 previews embedded; playback pitch, level, filtering, stereo placement and reflections vary at runtime.
+
+markedit: Fireworks.wav (lake aerial shells), CC0 1.0
+https://freesound.org/people/markedit/sounds/158727/
+Two short excerpts, peak normalized and edge faded.
+
+Original music: three 120-second instrumental scores composed and synthesized for the shore, boat and night-flight themes in this app. Piano-like additive voices, bells, pads, bass and percussion. Musical events in symphony.js drive the fireworks choreography.
