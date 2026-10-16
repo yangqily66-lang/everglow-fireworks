@@ -11,4 +11,4 @@ markedit: Fireworks.wav (lake aerial shells), CC0 1.0
 https://freesound.org/people/markedit/sounds/158727/
 Two short excerpts, peak normalized and edge faded.
 
-Original music: three 120-second instrumental scores composed and synthesized for the shore, boat and night-flight themes in this app. Piano-like additive voices, bells, pads, bass and percussion. Musical events in symphony.js drive the fireworks choreography.
+Original music: three 120-second instrumental scores composed and synthesized for the shore, boat and night-flight themes in this app. Phrase-based piano, bowed-string synthesis, sparse plucks/flute, warm electric keys and restrained low percussion. Shore 72 BPM, boat 68 BPM, flight 88 BPM. A shared musical grid in symphony.js drives the recorded score and fireworks choreography. Audio is synthesized, not a live orchestral recording.

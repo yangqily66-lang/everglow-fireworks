@@ -72,6 +72,7 @@ const ENVIRONMENT_FRAGMENT_SHADER = `
       vec3 color = lakePhotograph(lakeReprojection(uv, camera));
       // Low contrast cloud shadow changes both the light and texture of the photographed sky.
       float skyMask = 1.0 - smoothstep(uHorizon - 0.37, uHorizon - 0.03, uv.y);
+      if (skyMask <= 0.001) return color;
       vec2 cloudUV = uv * vec2(3.1, 5.2) + vec2(uTime * 0.015, -uTime * 0.003);
       float clouds = cloudNoise(cloudUV);
       color *= 1.0 - skyMask * smoothstep(0.34, 0.75, clouds) * 0.24;
@@ -150,6 +151,7 @@ const ENVIRONMENT_FRAGMENT_SHADER = `
       float grain = mix(0.72, 0.45 + noise(p * 18.0) * 0.55, 1.0 / (1.0 + distance * 0.08));
       for (int i = 0; i < 8; i++) {
         vec3 light = uLightPosition[i];
+        if (light.z <= 0.0001) continue;
         vec3 direction = normalize(vec3((light.x - 0.5) * aspect,
                                        max(0.025, uHorizon - light.y), focal));
         float alignment = max(0.0, dot(reflected, direction));
@@ -211,7 +213,7 @@ const ENVIRONMENT_FRAGMENT_SHADER = `
 const ENVIRONMENT_SHADER_CONTRACT = Object.freeze({
   uPhoto: 'sampler2D, texture unit 0, unflipped HTML lake photo, CLAMP_TO_EDGE/LINEAR',
   uCity: 'sampler2D, texture unit 1, unflipped HTML city photo, CLAMP_TO_EDGE/LINEAR',
-  uResolution: 'vec2, output framebuffer width/height in pixels',
+  uResolution: 'vec2, presentation viewport width/height in pixels; independent of background raster budget',
   uPhotoSize: 'vec2, original lake image width/height in pixels',
   uCitySize: 'vec2, original city image width/height in pixels',
   uTime: 'float, show elapsed seconds in [0,180]',
@@ -225,6 +227,8 @@ const photographicEnvironmentGL = (() => {
   let canvas, gl, program, vertices, lakeTexture, cityTexture;
   let lakeImage, cityImage, failed = false, lost = false;
   const uniforms = Object.create(null);
+  const positions = new Float32Array(24), radiance = new Float32Array(24);
+  const selectedLights = new Array(8), selectedPowers = new Float32Array(8);
   const vertexSource = ENVIRONMENT_VERTEX_SHADER;
   const fragmentSource = ENVIRONMENT_FRAGMENT_SHADER;
 
@@ -341,8 +345,13 @@ const photographicEnvironmentGL = (() => {
       if (!initialize()) return false;
       const width = Math.max(1, options.width ?? (typeof W === 'undefined' ? innerWidth : W));
       const height = Math.max(1, options.height ?? (typeof H === 'undefined' ? innerHeight : H));
-      // Keep a full-HD surface sharp; cap only very large background buffers.
-      const scale = Math.min(1, Math.sqrt(5760000 / (width * height)));
+      // The photographic environment moves every frame, independently of the
+      // full-resolution stars. Spend fewer fragments on water and cloud shading.
+      const preset = options.quality ?? (typeof quality === 'undefined' ? 'auto' : quality);
+      const defaultBudget = preset === 'ultra' ? 3686400 : preset === 'balanced' ? 921600 : 2073600;
+      const pixelBudget = Number.isFinite(options.pixelBudget) && options.pixelBudget > 0
+        ? options.pixelBudget : defaultBudget;
+      const scale = Math.min(1, Math.sqrt(pixelBudget / (width * height)));
       const rw = Math.max(1, Math.round(width * scale));
       const rh = Math.max(1, Math.round(height * scale));
       if (canvas.width !== rw || canvas.height !== rh) {
@@ -363,7 +372,9 @@ const photographicEnvironmentGL = (() => {
       gl.bindTexture(gl.TEXTURE_2D, lakeTexture);
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, cityTexture);
-      gl.uniform2f(uniforms.uResolution, rw, rh);
+      // Keep photo fitting and the shoreline matte in the same viewport space
+      // even when the rounded background buffer has a slightly different aspect.
+      gl.uniform2f(uniforms.uResolution, width, height);
       gl.uniform2f(uniforms.uPhotoSize, source.lake?.naturalWidth || source.lake?.width || 1,
         source.lake?.naturalHeight || source.lake?.height || 1);
       gl.uniform2f(uniforms.uCitySize, source.flight?.naturalWidth || source.flight?.width || 1,
@@ -375,15 +386,35 @@ const photographicEnvironmentGL = (() => {
       gl.uniform1f(uniforms.uTheme, theme === 'flight' ? 2 : theme === 'boat' ? 1 : 0);
       const lights = options.lights ?? (typeof shellLights === 'undefined' ? [] : shellLights);
       const colors = options.colors ?? (typeof RGB === 'undefined' ? [[255, 190, 100]] : RGB);
-      const selected = lights.slice().sort((a, b) =>
-        Math.max(0, 1 - b.age / b.life) * b.size - Math.max(0, 1 - a.age / a.life) * a.size).slice(0, 8);
-      const positions = new Float32Array(24), radiance = new Float32Array(24);
-      selected.forEach((light, i) => {
+      let selectedCount = 0;
+      for (const light of lights) {
         const power = Math.max(0, 1 - light.age / light.life) * light.size;
-        positions.set([light.x / width, light.y / height, power], i * 3);
+        if (!(power > 0)) continue;
+        let at = Math.min(selectedCount, 8);
+        while (at > 0 && power > selectedPowers[at - 1]) {
+          if (at < 8) {
+            selectedLights[at] = selectedLights[at - 1];
+            selectedPowers[at] = selectedPowers[at - 1];
+          }
+          at--;
+        }
+        if (at < 8) {
+          selectedLights[at] = light;
+          selectedPowers[at] = power;
+          selectedCount = Math.min(8, selectedCount + 1);
+        }
+      }
+      positions.fill(0);radiance.fill(0);
+      for (let i = 0; i < selectedCount; i++) {
+        const light = selectedLights[i],offset = i * 3;
+        positions[offset] = light.x / width;
+        positions[offset + 1] = light.y / height;
+        positions[offset + 2] = selectedPowers[i];
         const rgb = colors[((light.col || 0) % colors.length + colors.length) % colors.length];
-        radiance.set(rgb.map(value => value / 255), i * 3);
-      });
+        radiance[offset] = rgb[0] / 255;
+        radiance[offset + 1] = rgb[1] / 255;
+        radiance[offset + 2] = rgb[2] / 255;
+      }
       gl.uniform3fv(uniforms['uLightPosition[0]'], positions);
       gl.uniform3fv(uniforms['uLightColor[0]'], radiance);
       gl.drawArrays(gl.TRIANGLES, 0, 6);

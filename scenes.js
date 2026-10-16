@@ -1,5 +1,6 @@
 'use strict';
 let pov='shore', environmentCache=null, environmentKey='', sceneRevision=0;
+let cameraTransform=null,foregroundDrawKey='';
 const THEMES={shore:{title:'岸边 · 万花入梦',sub:'远处一朵初开，下一朵就在头顶。',tag:'十六种花型 / 远近交错 / 管弦与鼓点',location:'ON THE SHORE · 万花入梦'},boat:{title:'扁舟 · 独游星河',sub:'一个人，顺着水光，慢慢划进这场夏夜。',tag:'水上漫游 / 第一视角 / 拨弦与笛声',location:'DRIFTING ALONE · 独游星河'},flight:{title:'夜航 · 万家灯火',sub:'每一盏亮着的灯，都有一个还没睡的故事。',tag:'城市灯海 / 云间掠影 / 电子夜曲',location:'LIGHTS BELOW · 万家灯火'}};
 const photos={};
 if(typeof Image!=='undefined')for(const name of ['lake','flight','boat']){const img=photos[name]=new Image();img.onload=()=>{sceneRevision++;if(typeof drawWorld==='function')drawWorld()};img.onerror=()=>{if(typeof toast==='function')toast('实景照片暂未加载，已保留夜景与演出')};img.src='assets/'+name+(name==='boat'?'.png':'.jpg')}
@@ -21,7 +22,7 @@ function drawPhotoWorld(){
  return true;
 }
 function applyCamera(){
- if(typeof gpuEnvironmentActive!=='undefined'&&gpuEnvironmentActive){for(const cv of [world,stage])cv.style.transform='none';return}
+ if(typeof gpuEnvironmentActive!=='undefined'&&gpuEnvironmentActive){if(cameraTransform!=='none'){for(const cv of [world,stage])cv.style.transform='none';cameraTransform='none'}return}
  let x=0,y=0,r=0,s=1;
  const reduce=typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches;
  if(mode==='symphony'&&!reduce){
@@ -29,7 +30,8 @@ function applyCamera(){
   else if(pov==='boat'){x=Math.sin(showTime*.07)*.4;y=Math.sin(showTime*.7)*.3;r=Math.sin(showTime*.38)*.35;s=1.018}
   else {x=Math.sin(showTime*.009-1)*5.5;y=Math.sin(showTime*.018)*1.2;r=Math.sin(showTime*.012)*.6;s=1.16}
  }
- for(const c of [world,stage])c.style.transform=`translate(${x}%,${y}%) rotate(${r}deg) scale(${s})`;
+ const transform=`translate(${x}%,${y}%) rotate(${r}deg) scale(${s})`;
+ if(transform!==cameraTransform){for(const c of [world,stage])c.style.transform=transform;cameraTransform=transform}
 }
 function animateEnvironment(){
  if(mode!=='symphony')return;
@@ -47,7 +49,7 @@ function animateEnvironment(){
 }
 
 function drawPOV(){
- const cv=document.querySelector('#foreground');if(!cv)return;if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H}const c=cv.getContext('2d');c.clearRect(0,0,W,H);if(mode!=='symphony')return;
+ const cv=document.querySelector('#foreground');if(!cv)return;const key=mode+':'+pov+':'+W+':'+H;if(pov!=='boat'&&foregroundDrawKey===key)return;if(cv.width!==W||cv.height!==H){cv.width=W;cv.height=H}const c=cv.getContext('2d');c.clearRect(0,0,W,H);foregroundDrawKey=key;if(mode!=='symphony')return;
  if(pov==='boat'){
   c.save();c.globalCompositeOperation='screen';for(let side of [-1,1])for(let i=0;i<28;i++){const u=(i/28+showTime*.17)%1;const y=H*(.85+u*.15),x=W*(.5+side*(.035+u*.28));c.strokeStyle=`rgba(177,211,222,${(1-u)*.17})`;c.lineWidth=H*.001;c.beginPath();c.moveTo(x,y);c.quadraticCurveTo(x+side*W*.025,y+H*.008,x+side*W*.065,y+H*.014);c.stroke()}c.restore();
   if(photos.boat?.complete&&photos.boat.naturalWidth){const sway=Math.sin(showTime*.73)*H*.002;c.drawImage(photos.boat,W*.26,H*.72+sway,W*.48,H*.32)}
@@ -55,7 +57,7 @@ function drawPOV(){
   c.fillStyle='#0c0d12';c.beginPath();c.rect(0,0,W,H);c.roundRect(W*.065,H*.06,W*.87,H*.88,H*.2);c.fill('evenodd');c.strokeStyle='#706c6666';c.lineWidth=H*.012;c.beginPath();c.roundRect(W*.065,H*.06,W*.87,H*.88,H*.2);c.stroke();c.strokeStyle='#050509';c.lineWidth=H*.025;c.beginPath();c.roundRect(W*.055,H*.045,W*.89,H*.91,H*.22);c.stroke();
  }
 }
-function setPOV(next){if(!['shore','boat','flight'].includes(next))return;pov=next;environmentKey='';for(const cv of [world,stage,trails])cv.width=W;bloom.width=Math.ceil(W/4);starAtlas=null;smokeAtlas=null;SYMPHONY=SCORES[pov];switchShow('symphony');document.querySelectorAll('[data-pov]').forEach(b=>{const active=b.dataset.pov===pov;b.setAttribute('aria-pressed',String(active));b.classList.toggle('active',active)});viewpointTitle();applyCamera();drawPOV();wake()}
+function setPOV(next){if(!['shore','boat','flight'].includes(next))return;pov=next;environmentKey='';SYMPHONY=SCORES[pov];switchShow('symphony');document.querySelectorAll('[data-pov]').forEach(b=>{const active=b.dataset.pov===pov;b.setAttribute('aria-pressed',String(active));b.classList.toggle('active',active)})}
 
 async function enterLandscape(){
  if(innerWidth>1000&&innerHeight>600)return;
