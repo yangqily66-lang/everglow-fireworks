@@ -69,24 +69,33 @@ cues.sort((a,b)=>a.t-b.t)}
 function emit(cue){stats.launched++;if(pov==='boat'){const distance=650/(cue.depth??.8),advance=showTime*1.7,scale=distance/Math.max(200,distance-advance);cue={...cue,x:.5+(cue.x-.5)*scale,y:horizon/H-(horizon/H-cue.y)*scale,size:cue.size*scale}}if(isFlight()){cue={...cue,x:.28+cue.x*.44,y:.48+cue.y*.27,size:cue.size*.28}}if(mode==='cosmos'){burst({cue,tx:cue.x*W,ty:cue.y*H});return;}const sx=(cue.source??cue.x)*W,sy=isFlight()?cue.y*H+H*.06:mode==='concert'?H*.78:horizon-H*.012;const tx=cue.x*W,ty=cue.y*H;rockets.push({sx,sy,tx,ty,x:sx,y:sy,px:sx,py:sy,age:0,flight:cue.flight??(1.15+cue.size*.32),cue});audio.launch(cue.x)}
 // A burning star sheds smaller incandescent grains. Only physical particles leave light;
 // no persistent framebuffer, minimum opacity floor, or mathematically spaced spokes.
-let smokeAtlas=null,starAtlas=null;let shellLights=[];
+let smokeAtlas=null,starAtlas=null;let shellLights=[],dustEvictionCursor=0;
 const naturalPalette=[...PALETTE,'#ffae55','#e66d2c','#a84217','#fff5db'];
 function normal(){return Math.sqrt(-2*Math.log(Math.max(.00001,Math.random())))*Math.cos(TAU*Math.random())}
 function addParticle(x,y,vx,vy,life,col,width,kind,extra={}){
   const limit=quality==='ultra'?42000:quality==='balanced'?10000:23000;
-  if(particles.length>=limit)return;
-  const p={x,y,px:x,py:y,vx,vy,life,max:life,col,width,kind,seed:Math.random(),drag:rand(.48,.95),gravity:rand(.025,.038),heat:rand(.65,1.1),flicker:rand(13,31),emit:0,delay:0,history:[],...extra};
+  // Keep room for the next shell; old glitter must not suppress a new burst.
+  if(kind==='dust'&&particles.length>=limit*.72)return;
+  if(particles.length>=limit){
+    if(kind==='dust')return;
+    let freed=false;for(let i=0;i<64;i++){const at=dustEvictionCursor++%particles.length;if(particles[at].kind==='dust'){particles[at]=particles[particles.length-1];particles.pop();freed=true;break}}
+    if(!freed)return;
+  }
+  const p={x,y,px:x,py:y,vx,vy,life,max:life,col,width,kind,seed:Math.random(),drag:rand(.48,.95),gravity:rand(.025,.038),heat:rand(.85,1.2),flicker:rand(13,31),emit:0,delay:0,history:[],...extra};
   if(isFlight()){p.gravity*=.28;p.width*=.75}particles.push(p);return p;
 }
 function burst(r){
   if(!r.cue.secondary)stats.bursts++;
   const q=r.cue,x=r.tx,y=r.ty,kind=q.kind,size=q.size,col=q.col;
   const willow=['willow','crown','brocade','colorwillow'].includes(kind),mine=kind==='mine'||kind==='comet',palm=kind==='palm';
-  const count=Math.round((kind==='thousand'?30:kind==='crossette'?36:mine?36:palm?90:kind==='leaves'?110:willow?620:680)*size*particleFactor*(quality==='balanced'?.72:1));
-  const speed=H*(willow?.19:.245)*size,skewX=rand(.91,1.09),skewY=rand(.91,1.06),axis=rand(0,TAU);
+  const drooping=kind==='willow'||kind==='colorwillow';
+  const chrys=kind==='chrys'||kind==='doublecore';
+  const count=Math.round((kind==='thousand'?27:kind==='crossette'?42:mine?42:palm?86:kind==='leaves'?105:willow?600:chrys?620:520)*size*particleFactor*(quality==='balanced'?.78:1));
+  const speed=H*(drooping?.16:willow?.205:.245)*size,skewX=rand(.91,1.09),skewY=rand(.91,1.06),axis=rand(0,TAU);
+  const burn=drooping?rand(4.8,5.6):willow?rand(3.8,4.8):chrys?rand(2.5,3.1):rand(1.85,2.45),shellDrag=drooping?rand(.51,.59):willow?rand(.38,.47):rand(.62,.72);
   const inheritedX=rand(-.012,.012)*H,inheritedY=rand(-.012,.002)*H;
   if(!mine){
-    flashes.push({x,y,age:0,life:rand(.22,.36),size,col});shellLights.push({x,y,age:0,life:willow?5:3.5,size,col});
+    flashes.push({x,y,age:0,life:rand(.12,.19),size,col});shellLights.push({x,y,age:0,life:willow?3.2:2.1,size,col});
     if(mode!=='cosmos')for(let j=0;j<4;j++){
       const a=rand(0,TAU),v=rand(.01,.035)*H;
       smoke.push({x:x+Math.cos(a)*H*.01,y:y+Math.sin(a)*H*.01,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:H*rand(.018,.03)*size,age:0,life:rand(9,17),col,seed:Math.random(),angle:rand(0,TAU)});
@@ -95,9 +104,9 @@ function burst(r){
   }
   const arms=Array.from({length:9},()=>rand(0,TAU));
   for(let i=0;i<count;i++){
-    const z=rand(-1,1),a=rand(0,TAU),radial=Math.sqrt(1-z*z),v=speed*clamp(1+normal()*.13,.6,1.3);
+    const z=rand(-1,1),a=rand(0,TAU),radial=Math.sqrt(1-z*z),v=speed*clamp(1+normal()*.045,.85,1.14);
     let vx=Math.cos(a)*radial*v*skewX,vy=Math.sin(a)*radial*v*skewY;
-    let life=willow?rand(2.8,5.8):rand(1.3,3.3),ci=col;
+    let life=burn*rand(.88,1.12),ci=col;
     if(kind==='heart'){const a=rand(0,TAU);vx=Math.pow(Math.sin(a),3)*v;vy=-(13*Math.cos(a)-5*Math.cos(2*a)-2*Math.cos(3*a)-Math.cos(4*a))/16*v;life=rand(2.3,3.2)}
     if(kind==='spiral'){const a=i/count*TAU*3;const radius=.2+.8*i/count;vx=Math.cos(a)*v*radius;vy=Math.sin(a)*v*radius;life=rand(2,3.5)}
     if(kind==='leaves'){vx*=.65;vy*=.55;life=rand(3.5,5.5)}
@@ -105,16 +114,16 @@ function burst(r){
     if(mine){vx=normal()*H*.027;vy=-rand(.07,.18)*H;life=rand(.45,1.35)}
     if(willow){vy-=H*.015;ci=kind==='crown'&&Math.random()>.55?col:0}
     if(palm){const angle=arms[i%arms.length]+normal()*.035;vx=Math.cos(angle)*v;vy=Math.sin(angle)*v;life=rand(1.15,1.9)}
-    if((kind==='chrys'||kind==='doublecore')&&i%3===0){vx*=rand(.35,.55);vy*=rand(.35,.55);ci=(col+3)%9}
+    if(chrys&&i%3===0){const coreScale=kind==='doublecore'?(i%6===0?.32:.56):.44;vx*=coreScale;vy*=coreScale;ci=(col+3)%9}
     if(kind==='strobe'&&Math.random()>.3)ci=6;
     if(kind==='thousand'){life=rand(.9,1.3);vx*=.7;vy*=.7}
     if(kind==='crossette'){life=rand(1.5,2);vx*=.85;vy*=.85}
     const depthScale=.78+(z+1)*.18;
-    addParticle(x+normal()*H*.0012,y+normal()*H*.0012,vx+inheritedX,vy+inheritedY,life,ci,H/900*rand(.62,1.1)*depthScale,kind,{
+    addParticle(x+normal()*H*.0007,y+normal()*H*.0007,vx+inheritedX,vy+inheritedY,life,ci,H/900*rand(.58,.86)*depthScale,kind,{
       splitFlower:kind==='thousand'?'peony':kind==='crossette'?'cross':null,splitAge:kind==='thousand'?rand(.55,.9):rand(.7,1),changeCol:kind==='colorwillow'?(col+3)%9:kind==='ghost'?(col+4)%9:null,
-      depth:z,delay:rand(0,.09),drag:willow?rand(.34,.62):rand(.58,.95),gravity:willow?rand(.022,.036):rand(.029,.041),
-      heat:rand(.65,1.1)*depthScale,child:palm&&i%4===0,splitAt:rand(.18,.42),shedRate:willow?rand(12,23):mine?rand(2,5):rand(4,10),
-      historyMax:willow?16:10,rotation:axis,metal:(willow&&kind!=='colorwillow')||((col===0||col===6)&&kind!=='ghost')
+      depth:z,delay:rand(0,.035),drag:shellDrag*rand(.94,1.06),gravity:drooping?rand(.038,.045):willow?rand(.026,.032):rand(.032,.037),
+      heat:rand(1.05,1.45)*depthScale,child:palm&&i%4===0,splitAt:rand(.18,.42),shedRate:drooping?rand(10,16):willow?rand(15,23):chrys?rand(7,11):mine?rand(3,6):rand(.5,1.8),
+      historyMax:drooping?16:willow||chrys?12:5,tailTime:drooping?.25:willow?.16:chrys?.12:.045,rotation:axis,metal:(willow&&kind!=='colorwillow')||((col===0||col===6)&&kind!=='ghost')
     });
   }
   // The burst charge burns briefly; it does not form a second perfect sphere.
@@ -144,18 +153,21 @@ function physics(dt){for(let i=shellLights.length-1;i>=0;i--){shellLights[i].age
     if(p.life<=0){particles[i]=particles[particles.length-1];particles.pop();continue}
     p.px=p.x;p.py=p.y;
     if(p.splitFlower&&p.max-p.life>p.splitAge){const flower=p.splitFlower;p.splitFlower=null;const n=flower==='cross'?4:38;for(let k=0;k<n;k++){const a=flower==='cross'?k*Math.PI/2+p.rotation:rand(0,TAU),v=H*(flower==='cross'?.055:.027)*(isFlight()?.28:1);addParticle(p.x,p.y,Math.cos(a)*v+p.vx*.25,Math.sin(a)*v+p.vy*.25,rand(.7,1.6),(p.col+k%3)%9,H/900*rand(.3,.6),'peony',{heat:1,historyMax:6,shedRate:3,gravity:isFlight()?.006:.025})}p.life=Math.min(p.life,.1)}
-    const age=p.max-p.life,space=mode==='cosmos',drag=Math.exp(-dt*(space?.12:p.drag));
+    const age=p.max-p.life,space=mode==='cosmos',speed=Math.hypot(p.vx,p.vy)/H;
+    // Large burning stars retain momentum; fine ejected grains brake much faster.
+    const drag=Math.exp(-dt*(space?.12:p.drag*(.28+speed*(p.kind==='dust'?6:3.4))));
     const wind=space?0:H*(.003+Math.sin(p.y/H*6+showTime*.35)*.002)+(p.kind==='leaves'?Math.sin(age*4+p.seed*20)*H*.035:0);
     p.vx=p.vx*drag+wind*dt;p.vy=p.vy*drag+dt*H*(space?0:p.gravity);
     p.x+=p.vx*dt;p.y+=p.vy*dt;
-    if(p.historyMax){p.history.push([p.px,p.py,age]);const length=p.metal?.24:.15;while(p.history.length&&p.history[0][2]<age-length)p.history.shift();while(p.history.length>16)p.history.shift()}
+    if(p.historyMax){p.history.push([p.px,p.py,age-dt]);const length=p.tailTime??.07;while(p.history.length&&p.history[0][2]<age-length)p.history.shift();while(p.history.length>p.historyMax)p.history.shift()}
     if(p.shedRate&&age>.055){
       if(p.seed>.94&&age<2.4&&Math.random()<dt*5&&smoke.length<280){smoke.push({x:p.x,y:p.y,vx:p.vx*.025,vy:p.vy*.025,r:H*rand(.006,.016),age:0,life:rand(6,10),col:p.col%9,seed:Math.random(),angle:rand(0,TAU)})}
       p.emit+=dt*p.shedRate*Math.min(1,p.life*.8);
       while(p.emit>=1){p.emit--;const jitter=H*.004;
-        addParticle(p.x+normal()*H*.0005,p.y+normal()*H*.0005,p.vx*rand(.25,.65)+normal()*jitter,p.vy*rand(.25,.65)+normal()*jitter,
-          p.metal?rand(.25,1.15):rand(.12,.48),p.metal?9:p.col,H/900*rand(.18,.46),'dust',
-          {drag:rand(1.1,2.1),gravity:rand(.018,.035),heat:rand(.15,.65),historyMax:0,metal:p.metal});
+        const along=Math.random(),ex=p.px+(p.x-p.px)*along,ey=p.py+(p.y-p.py)*along;
+        addParticle(ex+normal()*H*.00035,ey+normal()*H*.00035,p.vx*rand(.48,.75)+normal()*jitter,p.vy*rand(.48,.75)+normal()*jitter,
+          p.metal?rand(.4,1.3):rand(.12,.38),p.metal?9:p.col,H/900*rand(.16,.34),'dust',
+          {drag:rand(2.8,4.5),gravity:rand(.024,.035),heat:rand(.4,.95),historyMax:0,metal:p.metal,glitter:p.metal&&Math.random()<.24});
       }
     }
     if(p.child&&p.life<p.splitAt){p.child=false;for(let k=0;k<18;k++){const a=rand(0,TAU),v=rand(.01,.035)*H;addParticle(p.x,p.y,Math.cos(a)*v+p.vx*.3,Math.sin(a)*v+p.vy*.3,rand(.4,1.4),p.col,H/900*rand(.25,.5),'dust',{drag:1.1,heat:.8,historyMax:0})}}
@@ -178,47 +190,87 @@ function drawLitSmoke(){
  if(showTime-mistClock>1/18||mistCanvas.width!==Math.round(W*.4)){
   const sw=Math.round(W*.4),sh=Math.round(H*.4);if(mistCanvas.width!==sw||mistCanvas.height!==sh){mistCanvas.width=sw;mistCanvas.height=sh}mistContext.clearRect(0,0,sw,sh);mistContext.save();mistContext.scale(.4,.4);
   const atlas=getSmokeAtlas(),lights=shellLights.slice(-14);
-  for(const p of smoke){let lighting=.018,dominant=0,ci=6;for(const light of lights){const d=Math.hypot(light.x-p.x,light.y-p.y),radius=H*(.18+light.age*.07)*light.size;if(d<radius){const energy=Math.pow(1-light.age/light.life,1.4)*(1-d/radius);lighting+=energy*.8;if(energy>dominant){dominant=energy;ci=light.col%9}}}const alpha=Math.min(.8,lighting)*(1-p.age/p.life);if(alpha<.004)continue;mistContext.save();mistContext.globalAlpha=alpha;mistContext.translate(p.x,p.y);mistContext.rotate(p.angle);mistContext.drawImage(atlas[ci*3+Math.floor(p.seed*3)],-p.r*1.7,-p.r,p.r*3.4,p.r*2.4);mistContext.restore()}
+  for(const p of smoke){let lighting=.009,dominant=0,ci=6;for(const light of lights){const d=Math.hypot(light.x-p.x,light.y-p.y),radius=H*(.18+light.age*.07)*light.size;if(d<radius){const energy=Math.pow(1-light.age/light.life,2.5)*(1-d/radius);lighting+=energy*.42;if(energy>dominant){dominant=energy;ci=light.col%9}}}const alpha=Math.min(.3,lighting)*(1-p.age/p.life);if(alpha<.004)continue;mistContext.save();mistContext.globalAlpha=alpha;mistContext.translate(p.x,p.y);mistContext.rotate(p.angle);mistContext.drawImage(atlas[ci*3+Math.floor(p.seed*3)],-p.r*1.7,-p.r,p.r*3.4,p.r*2.4);mistContext.restore()}
   mistContext.restore();mistClock=showTime;
  }
  sc.save();sc.globalCompositeOperation='screen';sc.globalAlpha=1;sc.drawImage(mistCanvas,0,0,W,H);sc.restore();
 }
-// Opacity and width are quantized only for batching. Black is truly black.
-const naturalBuckets=Array.from({length:13*12*3},()=>[]);
-function segment(col,a,width,x1,y1,x2,y2){if(a<.018)return;const level=Math.min(11,Math.floor(a*12)),size=width<H/900*.34?0:width<H/900*.61?1:2;naturalBuckets[(col*12+level)*3+size].push(x1,y1,x2,y2)}
-function getStarAtlas(){if(starAtlas)return starAtlas;starAtlas=naturalPalette.map(color=>{const cv=document.createElement('canvas');cv.width=cv.height=24;const ctx=cv.getContext('2d'),g=ctx.createRadialGradient(12,12,0,12,12,12);g.addColorStop(0,'#fff9eb');g.addColorStop(.09,'#fff1d0');g.addColorStop(.18,color);g.addColorStop(.4,color+'70');g.addColorStop(1,color+'00');ctx.fillStyle=g;ctx.fillRect(0,0,24,24);return cv});return starAtlas}
+// Full-resolution light, independent of the low-frequency optical glow.
+const naturalBuckets=Array.from({length:13*12*4},()=>[]);
+const headBuckets=Array.from({length:13*12},()=>[]);
+const hotPalette=['#fff6d6','#ffb18a','#ffcee7','#d5e8ff','#e2ceff','#b8ffe0','#fffce5','#ffb2bc','#cfe7ff','#ffe5b0','#ffc16c','#ff9859','#fffdf3'];
+function segment(col,a,width,x1,y1,x2,y2){
+  if(a<.025)return;
+  const level=Math.min(11,Math.floor(a*12)),w=width/(H/900),size=w<.32?0:w<.5?1:w<.75?2:3;
+  naturalBuckets[(col*12+level)*4+size].push(x1,y1,x2,y2);
+}
+function getStarAtlas(){
+  if(starAtlas)return starAtlas;
+  starAtlas=naturalPalette.map(color=>{
+    const cv=document.createElement('canvas');cv.width=cv.height=32;
+    const ctx=cv.getContext('2d'),g=ctx.createRadialGradient(16,16,0,16,16,16);
+    g.addColorStop(0,color+'cc');g.addColorStop(.16,color+'55');g.addColorStop(.48,color+'10');g.addColorStop(1,color+'00');
+    ctx.fillStyle=g;ctx.fillRect(0,0,32,32);return cv;
+  });return starAtlas;
+}
+function starIntensity(p,age,u){
+  const dust=p.kind==='dust',fade=Math.pow(Math.max(0,1-u),dust?1.15:.38);
+  let a=p.heat*fade*(.91+.06*Math.sin(age*p.flicker+p.seed*100)+.03*Math.sin(age*67+p.seed*31))*Math.min(1,age*65);
+  if(p.kind==='strobe'&&u>.22){const pulse=(age*(3.8+p.seed*2.8)+p.seed*17)%1;a*=pulse<.23?Math.pow(Math.sin(pulse/.23*Math.PI),.55):.015;}
+  if(p.glitter){const pulse=(age*(7+p.seed*7)+p.seed*31)%1;a*=pulse<.34?1:.12;}
+  if(p.kind==='ghost')a*=u<.33?1:u<.48?.015:Math.min(1,(u-.48)*16);
+  return a;
+}
+function starColor(p,age,u){
+  if(p.metal)return u>.91?11:u>.78?10:u>.55?9:p.col;
+  if(age<.065)return 12;
+  return p.changeCol!=null&&u>.48+p.seed*.055?p.changeCol:p.col;
+}
 function render(dt){
-  tc.clearRect(0,0,W,H);tc.globalCompositeOperation='lighter';
-  for(const bucket of naturalBuckets)bucket.length=0;
+  tc.clearRect(0,0,W,H);tc.globalCompositeOperation='lighter';tc.lineCap='round';
+  bc.clearRect(0,0,bloom.width,bloom.height);bc.globalCompositeOperation='lighter';
+  const glowAtlas=getStarAtlas(),glowScale=bloom.width/W;
+  for(const buckets of [naturalBuckets,headBuckets])for(const bucket of buckets)bucket.length=0;
   for(const p of particles){
-    if(p.delay>0||p.y>horizon+H*.012)continue;
-    const age=p.max-p.life,u=age/p.max,fade=Math.pow(Math.max(0,1-u),p.kind==='dust'?1.3:.3);
-    const flutter=.78+.14*Math.sin(age*p.flicker+p.seed*100)+.08*Math.sin(age*73+p.seed*31);
-    let a=p.heat*fade*flutter*Math.min(1,age*35)*(p.kind==='dust'?1.8:2.2);
-    if(p.kind==='strobe'&&u>.28)a*=.12+.88*Math.pow(Math.max(0,Math.sin(age*(16+p.seed*13)+p.seed*40)),3);
-    let col=p.changeCol!==null&&p.changeCol!==undefined&&u>.48?p.changeCol:p.col;if(p.kind==='ghost'){a*=u<.33?1:u<.48?.03:Math.min(1,(u-.48)*12)}
-    if(p.metal){col=u>.92?11:u>.8?10:u>.65?9:p.col}
-    else if(age<.045)col=12;
-    // Short exposure of the hot grain, with a faint tapered tail.
-    const exposure=p.kind==='dust'?.023:.04;
-    segment(col,a,p.width,p.x-p.vx*exposure,p.y-p.vy*exposure,p.x+H*.00045,p.y);
-    if(p.history.length>1){for(let k=1;k<p.history.length;k+=Math.max(1,Math.ceil(p.history.length/6))){const tail=(k/p.history.length)**1.8;segment(col,a*tail*.8,p.width*.68,p.history[k-1][0],p.history[k-1][1],p.history[k][0],p.history[k][1])}}
+    if(p.delay>0||p.y>horizon+H*.012||p.x<-30||p.x>W+30||p.y<-30)continue;
+    const age=p.max-p.life,u=age/p.max,a=starIntensity(p,age,u),col=starColor(p,age,u),dust=p.kind==='dust';
+    if(a<.025)continue;
+    // A moving burning grain is a short, sharp stroke, never a soft sprite.
+    const exposure=dust?.016:p.metal?.027:.021;
+    segment(col,a*(dust?1.25:1.4),p.width*(dust?1:1.25),p.x-p.vx*exposure,p.y-p.vy*exposure,p.x,p.y);
+    const history=p.history;
+    for(let k=1;k<history.length;k++){
+      const old=history[k-1],now=history[k],tail=Math.pow(k/history.length,2.1),strength=p.metal?.6:.28;
+      segment(col,a*tail*strength,p.width*(.24+.31*tail),old[0],old[1],now[0],now[1]);
+    }
+    const headCol=!dust&&age<.085?12:col,level=Math.min(11,Math.floor(a*12));
+    const solidCore=dust?.48:H/900*(['peony','chrys','doublecore','ring'].includes(p.kind)?1.55:1.25);
+    headBuckets[headCol*12+level].push(p.x,p.y,Math.max(solidCore,p.width*(dust?.95:1.75)));
+    // Only the hottest large stars feed the faint halo; fine sparks stay crisp.
+    if(!dust&&a>.62&&p.seed>.32){
+      const diameter=H/900*(p.metal?9:6.5)*glowScale;
+      bc.globalAlpha=Math.min(.65,a*.5);
+      bc.drawImage(glowAtlas[col],p.x*glowScale-diameter/2,p.y*glowScale-diameter/2,diameter,diameter);
+    }
   }
   for(let i=0;i<naturalBuckets.length;i++){
     const bucket=naturalBuckets[i];if(!bucket.length)continue;
-    const size=i%3,level=Math.floor(i/3)%12,col=Math.floor(i/36);
-    tc.lineWidth=H/900*[.55,.9,1.35][size];tc.globalAlpha=(level+.5)/12;tc.strokeStyle=naturalPalette[col];tc.beginPath();
+    const size=i%4,level=Math.floor(i/4)%12,col=Math.floor(i/48);
+    tc.lineWidth=H/900*[.23,.4,.62,.88][size];tc.globalAlpha=(level+.5)/12;tc.strokeStyle=naturalPalette[col];tc.beginPath();
     for(let k=0;k<bucket.length;k+=4){tc.moveTo(bucket[k],bucket[k+1]);tc.lineTo(bucket[k+2],bucket[k+3])}tc.stroke();
   }
-  const stars=getStarAtlas();
-  for(const p of particles){if(p.delay>0||p.kind==='dust'||p.y>horizon)continue;const u=1-p.life/p.max,alpha=Math.min(1,p.heat*Math.pow(1-u,.65)*1.3),col=p.metal?(u>.9?10:u>.68?9:p.col):p.col;const diameter=(H/900*3.2+p.width*1.6)*(.8+.2*Math.sin(p.seed*91+(p.max-p.life)*19));tc.globalAlpha=alpha*(p.kind==='ghost'&&u>.33&&u<.48?.03:1);const headCol=p.changeCol!=null&&u>.48?p.changeCol:col;tc.drawImage(stars[headCol],p.x-diameter/2,p.y-diameter/2,diameter,diameter);tc.fillStyle=u<.7?'#fffce9':naturalPalette[headCol];const core=Math.max(1,H/900*1.05);tc.fillRect(p.x-core/2,p.y-core/2,core,core)}
-  tc.globalAlpha=.8;tc.lineWidth=H*.00048;tc.strokeStyle='#ffdda7';tc.beginPath();
+  for(let i=0;i<headBuckets.length;i++){
+    const bucket=headBuckets[i];if(!bucket.length)continue;
+    tc.globalAlpha=Math.min(1,(i%12+.65)/12*1.35);tc.fillStyle=hotPalette[Math.floor(i/12)];tc.beginPath();
+    for(let k=0;k<bucket.length;k+=3){const s=bucket[k+2],snap=s<1.2;tc.rect(snap?Math.round(bucket[k]-.5):bucket[k]-s/2,snap?Math.round(bucket[k+1]-.5):bucket[k+1]-s/2,snap?1:s,snap?1:s)}
+    tc.fill();
+  }
+  tc.globalAlpha=1;tc.lineWidth=Math.max(.7,H*.00055);tc.strokeStyle='#fff4d0';tc.beginPath();
   for(const r of rockets){tc.moveTo(r.x-(r.x-r.px)*.35,r.y-(r.y-r.py)*.35);tc.lineTo(r.x,r.y)}tc.stroke();tc.globalAlpha=1;
   sc.clearRect(0,0,W,H);drawDynamicWorld();sc.globalCompositeOperation='screen';
   if(mode!=='cosmos')drawLitSmoke();
-  bc.clearRect(0,0,bloom.width,bloom.height);bc.filter='blur(.65px)';bc.drawImage(trails,0,0,bloom.width,bloom.height);bc.filter='none';
-  sc.globalAlpha=.2;sc.drawImage(bloom,0,0,W,H);sc.globalAlpha=1;sc.drawImage(trails,0,0);
-  for(const f of flashes){const u=f.age/f.life,a=Math.pow(1-u,3);halo(sc,f.x,f.y,H*.05*f.size,'255,220,171',a*.95)}
+  sc.globalAlpha=.12;sc.drawImage(bloom,0,0,W,H);sc.globalAlpha=1;sc.drawImage(trails,0,0);
+  for(const f of flashes){const u=f.age/f.life,a=Math.pow(1-u,4);halo(sc,f.x,f.y,H*.032*f.size,'255,220,171',a*.72);sc.globalAlpha=a;sc.fillStyle='#fff9e9';const r=H*.0013*f.size;sc.fillRect(f.x-r,f.y-r,r*2,r*2)}sc.globalAlpha=1;
   if(horizon<H){
     sc.save();sc.beginPath();sc.rect(0,horizon,W,H-horizon);sc.clip();sc.translate(0,horizon*1.25);sc.scale(1,-.25);sc.globalAlpha=.4;sc.drawImage(bloom,0,0,W,H);
     sc.globalAlpha=.38;for(let y=0;y<horizon;y+=10){const wave=(Math.sin(y*.073+showTime*.9)+Math.sin(y*.19-showTime*.65))*H*.0018;sc.drawImage(trails,0,y,W,10,wave,y,W,6)}sc.restore();
